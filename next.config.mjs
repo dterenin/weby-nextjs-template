@@ -1,16 +1,26 @@
-// next.config.mjs (dterenin/weby-nextjs-template)
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  eslint: {
-    ignoreDuringBuilds: true,
+  experimental: {
+    workerVersion: false
   },
+  telemetry: false,
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: true
   },
-  images: {
+  eslint: {
+    ignoreDuringBuilds: true
   },
-  swcMinify: true,
-};
+  output: 'standalone',
+  distDir: '.next',
+  trailingSlash: true,
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      canvas: false,
+      encoding: false
+    }
+    return config
+  }
+}
 
-export default nextConfig;
+module.exports = nextConfig 
