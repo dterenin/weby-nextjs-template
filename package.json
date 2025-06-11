@@ -2,12 +2,17 @@
   "name": "template-project",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "fix": "ts-node auto_fixer.ts"
+    "fix": "ts-node ts-morph-fixer.ts",
+    "install-deps": "pnpm install --strict-peer-dependencies=false",
+    "lint": "pnpm exec eslint . --fix",
+    "format": "pnpm exec prettier --write . --ignore-unknown",
+    "build": "pnpm run build",
+    "dev": "pnpm dev",
+    "setup": "pnpm run install-deps && pnpm run lint && pnpm run format",
+    "fix-and-build": "pnpm run fix && pnpm run setup && pnpm run build",
+    "process-site": "pnpm run fix && pnpm run install-deps && pnpm run lint && pnpm run format && pnpm run build"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -80,6 +85,7 @@
   "devDependencies": {
     "@babel/eslint-parser": "^7.27.5",
     "@eslint/eslintrc": "^3.3.1",
+    "glob": "^10.3.0",
     "@tailwindcss/postcss": "^4.1.8",
     "@types/leaflet": "^1.9.18",
     "@types/node": "^20.19.0",
