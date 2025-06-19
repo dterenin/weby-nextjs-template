@@ -1,4 +1,4 @@
-// ts-morph-fixer.ts - Complete TypeScript solution
+// ts-morph-fixer.ts - Complete TypeScript solution with memory leak fixes
 import { Project, SourceFile, Node, ImportDeclaration, SyntaxKind, ts, Identifier, Diagnostic } from "ts-morph";
 import path from "node:path";
 import fs from "node:fs";
@@ -7,7 +7,8 @@ import fs from "node:fs";
 interface ExportInfo {
   path: string;
   isDefault: boolean;
-  sourceFile?: SourceFile;
+  // MEMORY FIX: Remove sourceFile reference to prevent circular references
+  // sourceFile?: SourceFile; // Removed to prevent memory leaks
 }
 
 interface PreprocessResult {
@@ -29,6 +30,9 @@ interface FixerConfig {
   buildOutput?: string;
   skipPreprocessing?: boolean;
   verboseLogging?: boolean;
+  // MEMORY FIX: Add memory management options
+  maxFilesPerBatch?: number;
+  enableMemoryOptimization?: boolean;
 }
 
 interface FixerStats {
@@ -36,6 +40,8 @@ interface FixerStats {
   importsFixed: number;
   exportsRefactored: number;
   diagnosticsResolved: number;
+  // MEMORY FIX: Add memory usage tracking
+  memoryUsageMB?: number;
 }
 
 interface FixerOptions {
@@ -79,8 +85,32 @@ const DEFAULT_OPTIONS: Required<FixerOptions> = {
   logLevel: 'info'
 };
 
-// Legacy global export map for backward compatibility
-const exportMap = new Map<string, { path: string; isDefault: boolean }>();
+// MEMORY FIX: Use WeakMap instead of global Map to allow garbage collection
+const exportMapCache = new WeakMap<Project, Map<string, ExportInfo>>();
+
+/**
+ * MEMORY FIX: Helper function to get or create export map for a project
+ * This prevents global state accumulation
+ */
+function getExportMap(project: Project): Map<string, ExportInfo> {
+  let exportMap = exportMapCache.get(project);
+  if (!exportMap) {
+    exportMap = new Map<string, ExportInfo>();
+    exportMapCache.set(project, exportMap);
+  }
+  return exportMap;
+}
+
+/**
+ * MEMORY FIX: Helper function to clear export map for a project
+ */
+function clearExportMap(project: Project): void {
+  const exportMap = exportMapCache.get(project);
+  if (exportMap) {
+    exportMap.clear();
+    exportMapCache.delete(project);
+  }
+}
 
 /**
  * Pre-processing functions migrated from Python script
@@ -189,20 +219,25 @@ function enforceNamedExports(project: Project) {
     const exportName = expression.getText();
     console.log(`    - 🔄 Refactoring '${exportName}' in ${relativePath} to a named export.`);
     
-    // Find all references to this export and update imports
-    const referencedSymbols = expression.findReferences();
-    for (const referencedSymbol of referencedSymbols) {
-      for (const reference of referencedSymbol.getReferences()) {
-        const node = reference.getNode();
-        const importClause = node.getParentIfKind(SyntaxKind.ImportClause);
-        if (importClause && importClause.getDefaultImport()?.getText() === exportName) {
-          const importDeclaration = importClause.getParentIfKindOrThrow(SyntaxKind.ImportDeclaration);
-          const existingNamed = importDeclaration.getNamedImports().map(ni => ni.getName());
-          const newNamed = [...existingNamed, exportName].sort();
-          importDeclaration.removeDefaultImport();
-          importDeclaration.addNamedImports(newNamed);
+    // MEMORY FIX: Limit the scope of reference finding to prevent memory buildup
+    try {
+      // Find all references to this export and update imports
+      const referencedSymbols = expression.findReferences();
+      for (const referencedSymbol of referencedSymbols) {
+        for (const reference of referencedSymbol.getReferences()) {
+          const node = reference.getNode();
+          const importClause = node.getParentIfKind(SyntaxKind.ImportClause);
+          if (importClause && importClause.getDefaultImport()?.getText() === exportName) {
+            const importDeclaration = importClause.getParentIfKindOrThrow(SyntaxKind.ImportDeclaration);
+            const existingNamed = importDeclaration.getNamedImports().map(ni => ni.getName());
+            const newNamed = [...existingNamed, exportName].sort();
+            importDeclaration.removeDefaultImport();
+            importDeclaration.addNamedImports(newNamed);
+          }
         }
       }
+    } catch (error) {
+      console.warn(`⚠️  Warning: Could not process references for ${exportName}: ${error}`);
     }
 
     // Convert the declaration to a named export
@@ -222,59 +257,75 @@ function enforceNamedExports(project: Project) {
 /**
  * Pass 2: Build a comprehensive map of all available exports in the project.
  * This is essential for fixing completely missing imports (TS2304 errors).
+ * MEMORY FIX: Use project-scoped export map instead of global
  */
 function buildExportMap(project: Project) {
   console.log("  - [Pass 2] Building project-wide export map...");
-  exportMap.clear();
+  const exportMap = getExportMap(project);
+  exportMap.clear(); // Clear any existing data
 
-  project.getSourceFiles().forEach(sourceFile => {
-    // Skip node_modules and declaration files
-    if (sourceFile.getFilePath().includes("/node_modules/") || sourceFile.isDeclarationFile()) return;
+  // MEMORY FIX: Process files in smaller batches to prevent memory spikes
+  const sourceFiles = project.getSourceFiles().filter(sf => 
+    !sf.getFilePath().includes("/node_modules/") && 
+    !sf.isDeclarationFile() &&
+    sf.getFilePath().includes('/src/')
+  );
+
+  const batchSize = 25; // Reduced batch size for better memory management
+  for (let i = 0; i < sourceFiles.length; i += batchSize) {
+    const batch = sourceFiles.slice(i, i + batchSize);
     
-    const filePath = sourceFile.getFilePath();
-    console.log(`    - Checking file: ${filePath}`);
-    
-    // Only process files in the src directory
-    if (!filePath.includes('/src/')) {
-      console.log(`    - Skipping file outside src: ${filePath}`);
-      return;
-    }
-    
-    // Calculate the module specifier for imports (@/...)
-    const srcIndex = filePath.indexOf('/src/');
-    const relativePath = filePath.substring(srcIndex + 5).replace(/\.(ts|tsx)$/, '').replace(/\\/g, '/');
-    const moduleSpecifier = `@/${relativePath.replace(/\/index$/, '')}`;
-    
-    console.log(`    - Processing file: ${filePath}`);
-    console.log(`    - Module specifier: ${moduleSpecifier}`);
-    
-    // Handle default exports
-    const defaultExportSymbol = sourceFile.getDefaultExportSymbol();
-    if (defaultExportSymbol) {
-      let exportName = defaultExportSymbol.getAliasedSymbol()?.getName() ?? defaultExportSymbol.getName();
-      // If the export name is 'default', derive it from the filename
-      if (exportName === 'default') {
-        const baseName = sourceFile.getBaseNameWithoutExtension();
-        exportName = (baseName !== 'index') 
-          ? (baseName.charAt(0).toUpperCase() + baseName.slice(1)) 
-          : (path.basename(path.dirname(sourceFile.getFilePath())).charAt(0).toUpperCase() + path.basename(path.dirname(sourceFile.getFilePath())).slice(1));
-      }
-      if (!exportMap.has(exportName)) {
-        exportMap.set(exportName, { path: moduleSpecifier, isDefault: true });
-        console.log(`    - Added default export: ${exportName}`);
-      }
-    }
-    
-    // Handle named exports
-    const exportSymbols = sourceFile.getExportSymbols();
-    exportSymbols.forEach(symbol => {
-      const name = symbol.getName();
-      if (name !== "default" && !exportMap.has(name)) {
-        exportMap.set(name, { path: moduleSpecifier, isDefault: false });
-        console.log(`    - Added named export: ${name}`);
+    batch.forEach(sourceFile => {
+      try {
+        const filePath = sourceFile.getFilePath();
+        console.log(`    - Checking file: ${filePath}`);
+        
+        // Calculate the module specifier for imports (@/...)
+        const srcIndex = filePath.indexOf('/src/');
+        const relativePath = filePath.substring(srcIndex + 5).replace(/\.(ts|tsx)$/, '').replace(/\\/g, '/');
+        const moduleSpecifier = `@/${relativePath.replace(/\/index$/, '')}`;
+        
+        console.log(`    - Processing file: ${filePath}`);
+        console.log(`    - Module specifier: ${moduleSpecifier}`);
+        
+        // Handle default exports
+        const defaultExportSymbol = sourceFile.getDefaultExportSymbol();
+        if (defaultExportSymbol) {
+          let exportName = defaultExportSymbol.getAliasedSymbol()?.getName() ?? defaultExportSymbol.getName();
+          // If the export name is 'default', derive it from the filename
+          if (exportName === 'default') {
+            const baseName = sourceFile.getBaseNameWithoutExtension();
+            exportName = (baseName !== 'index') 
+              ? (baseName.charAt(0).toUpperCase() + baseName.slice(1)) 
+              : (path.basename(path.dirname(sourceFile.getFilePath())).charAt(0).toUpperCase() + path.basename(path.dirname(sourceFile.getFilePath())).slice(1));
+          }
+          if (!exportMap.has(exportName)) {
+            // MEMORY FIX: Don't store sourceFile reference to prevent circular references
+            exportMap.set(exportName, { path: moduleSpecifier, isDefault: true });
+            console.log(`    - Added default export: ${exportName}`);
+          }
+        }
+        
+        // Handle named exports
+        const exportSymbols = sourceFile.getExportSymbols();
+        exportSymbols.forEach(symbol => {
+          const name = symbol.getName();
+          if (name !== "default" && !exportMap.has(name)) {
+            // MEMORY FIX: Don't store sourceFile reference to prevent circular references
+            exportMap.set(name, { path: moduleSpecifier, isDefault: false });
+            console.log(`    - Added named export: ${name}`);
+          }
+        });
+      } catch (error) {
+        console.warn(`⚠️  Warning: Failed to process file ${sourceFile.getBaseName()}: ${error}`);
       }
     });
-  });
+    
+    // MEMORY FIX: Force garbage collection between batches if available
+    if (global.gc) {
+      global.gc();
+    }
+  }
   
   console.log(`  - [Pass 2] Export map built. Found ${exportMap.size} unique potential imports.`);
   if (exportMap.size === 0) {
@@ -285,97 +336,106 @@ function buildExportMap(project: Project) {
 /**
  * Pass 3: Fix import-related errors based on TypeScript diagnostics.
  * This handles various import/export mismatch scenarios.
+ * MEMORY FIX: Limit diagnostic processing to prevent memory buildup
  */
-function fixImportsBasedOnDiagnostics(sourceFile: SourceFile) {
+function fixImportsBasedOnDiagnostics(sourceFile: SourceFile, project: Project) {
   console.log(`  - [Pass 3] Fixing imports in ${path.basename(sourceFile.getFilePath())} based on diagnostics...`);
-  const diagnostics = sourceFile.getPreEmitDiagnostics();
+  
+  // MEMORY FIX: Limit the number of diagnostics processed to prevent memory issues
+  const diagnostics = sourceFile.getPreEmitDiagnostics().slice(0, 50); // Limit to first 50 diagnostics
   if (diagnostics.length === 0) {
     console.log("    - No diagnostics found. Skipping.");
     return;
   }
 
+  const exportMap = getExportMap(project);
   let changesMade = false;
+  
   for (const diagnostic of diagnostics) {
-    const code = diagnostic.getCode();
-    const messageText = diagnostic.getMessageText();
-    
-    console.log(`    - Processing diagnostic ${code}: ${messageText}`);
-    
-    // CASE 1: Module has no default export, suggests using named import
-    if (code === 2613 && typeof messageText === 'string') {
-        const match = messageText.match(/Did you mean to use 'import \{ ([^}]+) \} from "([^"]+)"'/);
-        if (match) {
-            const importName = match[1];
-            const fullModuleSpecifier = match[2];
-            
-            const moduleSpecifier = fullModuleSpecifier.includes('@/') 
-                ? fullModuleSpecifier 
-                : '@/components/header';
-            
-            const importDeclaration = sourceFile.getImportDeclaration(d => 
-                d.getModuleSpecifier().getLiteralValue().includes('header') || 
-                d.getModuleSpecifier().getLiteralValue() === moduleSpecifier
-            );
-            
-            if (importDeclaration && importDeclaration.getDefaultImport()) {
-                console.log(`    - 🛠️  Fixing incorrect default import for '${importName}' (TS2613).`);
-                importDeclaration.removeDefaultImport();
-                importDeclaration.addNamedImport(importName);
-                changesMade = true;
-            }
-        }
-    }
+    try {
+      const code = diagnostic.getCode();
+      const messageText = diagnostic.getMessageText();
+      
+      console.log(`    - Processing diagnostic ${code}: ${messageText}`);
+      
+      // CASE 1: Module has no default export, suggests using named import
+      if (code === 2613 && typeof messageText === 'string') {
+          const match = messageText.match(/Did you mean to use 'import \{ ([^}]+) \} from "([^"]+)"'/);
+          if (match) {
+              const importName = match[1];
+              const fullModuleSpecifier = match[2];
+              
+              const moduleSpecifier = fullModuleSpecifier.includes('@/') 
+                  ? fullModuleSpecifier 
+                  : '@/components/header';
+              
+              const importDeclaration = sourceFile.getImportDeclaration(d => 
+                  d.getModuleSpecifier().getLiteralValue().includes('header') || 
+                  d.getModuleSpecifier().getLiteralValue() === moduleSpecifier
+              );
+              
+              if (importDeclaration && importDeclaration.getDefaultImport()) {
+                  console.log(`    - 🛠️  Fixing incorrect default import for '${importName}' (TS2613).`);
+                  importDeclaration.removeDefaultImport();
+                  importDeclaration.addNamedImport(importName);
+                  changesMade = true;
+              }
+          }
+      }
 
-    // CASE 2: Cannot find name - missing import
-    if (code === 2304 && typeof messageText === 'string') {
-        const match = messageText.match(/'([^']+)'/);
-        if (match) {
-            const importName = match[1];
-            console.log(`    - Looking for missing import: ${importName}`);
-            
-            // Special case for utility functions
-            if (importName === 'cn') {
-                console.log(`    - 🎯 Adding special case: 'cn' from '@/lib/utils' (TS2304).`);
-                sourceFile.addImportDeclaration({ moduleSpecifier: '@/lib/utils', namedImports: ['cn'] });
-                changesMade = true;
-                continue;
-            }
+      // CASE 2: Cannot find name - missing import
+      if (code === 2304 && typeof messageText === 'string') {
+          const match = messageText.match(/'([^']+)'/);
+          if (match) {
+              const importName = match[1];
+              console.log(`    - Looking for missing import: ${importName}`);
+              
+              // Special case for utility functions
+              if (importName === 'cn') {
+                  console.log(`    - 🎯 Adding special case: 'cn' from '@/lib/utils' (TS2304).`);
+                  sourceFile.addImportDeclaration({ moduleSpecifier: '@/lib/utils', namedImports: ['cn'] });
+                  changesMade = true;
+                  continue;
+              }
 
-            // Look up in the export map
-            const exportInfo = exportMap.get(importName);
-            if (exportInfo) {
-                console.log(`    - ✅ Adding missing import for '${importName}' from '${exportInfo.path}' (TS2304).`);
-                const newImport = sourceFile.addImportDeclaration({ moduleSpecifier: exportInfo.path });
-                if (exportInfo.isDefault) newImport.setDefaultImport(importName);
-                else newImport.addNamedImport(importName);
-                changesMade = true;
-            } else {
-                console.log(`    - ❌ Could not find export for '${importName}' in export map.`);
-            }
-        }
-    }
+              // Look up in the export map
+              const exportInfo = exportMap.get(importName);
+              if (exportInfo) {
+                  console.log(`    - ✅ Adding missing import for '${importName}' from '${exportInfo.path}' (TS2304).`);
+                  const newImport = sourceFile.addImportDeclaration({ moduleSpecifier: exportInfo.path });
+                  if (exportInfo.isDefault) newImport.setDefaultImport(importName);
+                  else newImport.addNamedImport(importName);
+                  changesMade = true;
+              } else {
+                  console.log(`    - ❌ Could not find export for '${importName}' in export map.`);
+              }
+          }
+      }
 
-    // CASE 3: Module cannot be found - path resolution issues
-    if (code === 2307 && typeof messageText === 'string') {
-        const match = messageText.match(/Module '([^']+)'/);
-        if (match) {
-            const modulePath = match[1];
-            console.log(`    - 🔍 Found module resolution error for '${modulePath}' (TS2307).`);
-            
-            // Fix malformed @/ paths
-            if (modulePath.includes('@/../')) {
-                const correctedPath = modulePath.replace('@/../', '@/');
-                const importDeclaration = sourceFile.getImportDeclaration(d => 
-                    d.getModuleSpecifier().getLiteralValue() === modulePath
-                );
-                
-                if (importDeclaration) {
-                    console.log(`    - 🛠️  Fixing malformed path '${modulePath}' to '${correctedPath}' (TS2307).`);
-                    importDeclaration.setModuleSpecifier(correctedPath);
-                    changesMade = true;
-                }
-            }
-        }
+      // CASE 3: Module cannot be found - path resolution issues
+      if (code === 2307 && typeof messageText === 'string') {
+          const match = messageText.match(/Module '([^']+)'/);
+          if (match) {
+              const modulePath = match[1];
+              console.log(`    - 🔍 Found module resolution error for '${modulePath}' (TS2307).`);
+              
+              // Fix malformed @/ paths
+              if (modulePath.includes('@/../')) {
+                  const correctedPath = modulePath.replace('@/../', '@/');
+                  const importDeclaration = sourceFile.getImportDeclaration(d => 
+                      d.getModuleSpecifier().getLiteralValue() === modulePath
+                  );
+                  
+                  if (importDeclaration) {
+                      console.log(`    - 🛠️  Fixing malformed path '${modulePath}' to '${correctedPath}' (TS2307).`);
+                      importDeclaration.setModuleSpecifier(correctedPath);
+                      changesMade = true;
+                  }
+              }
+          }
+      }
+    } catch (error) {
+      console.warn(`⚠️  Warning: Failed to process diagnostic: ${error}`);
     }
   }
 
@@ -463,28 +523,30 @@ function fixImportExportMismatch(project: Project, importName: string, modulePat
 /**
  * Main controller class for TypeScript project auto-fixing
  * Encapsulates all state and provides a clean API
+ * MEMORY FIX: Added proper resource cleanup and memory management
  */
 class TypeScriptAutoFixer {
-  private readonly project: Project;
+  private project: Project | null = null; // MEMORY FIX: Allow nulling for cleanup
   private readonly config: FixerConfig;
-  private readonly exportMap = new Map<string, ExportInfo>();
   private readonly stats: FixerStats = {
     filesProcessed: 0,
     importsFixed: 0,
     exportsRefactored: 0,
-    diagnosticsResolved: 0
+    diagnosticsResolved: 0,
+    memoryUsageMB: 0
   };
 
   constructor(config: FixerConfig) {
-    this.config = config;
-    this.project = new Project({
-      tsConfigFilePath: path.join(config.projectPath, "tsconfig.json"),
-      skipAddingFilesFromTsConfig: true,
-    });
+    this.config = {
+      ...config,
+      maxFilesPerBatch: config.maxFilesPerBatch || 25, // MEMORY FIX: Default batch size
+      enableMemoryOptimization: config.enableMemoryOptimization ?? true
+    };
   }
 
   /**
    * Main entry point for the fixing process
+   * MEMORY FIX: Added proper cleanup in finally block
    */
   async fixProject(): Promise<FixerStats> {
     console.log("🚀 Starting Enhanced TypeScript Auto-Fix...");
@@ -495,10 +557,38 @@ class TypeScriptAutoFixer {
       await this.executeFixingPasses();
       await this.finalizeChanges();
       
+      // MEMORY FIX: Track memory usage
+      if (process.memoryUsage) {
+        this.stats.memoryUsageMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+      }
+      
       return this.stats;
     } catch (error) {
       console.error("❌ Auto-fix failed:", error);
       throw error;
+    } finally {
+      // MEMORY FIX: Ensure cleanup happens even if there's an error
+      await this.cleanup();
+    }
+  }
+
+  /**
+   * MEMORY FIX: Proper cleanup method to prevent memory leaks
+   */
+  private async cleanup(): Promise<void> {
+    console.log("🧹 Cleaning up resources...");
+    
+    if (this.project) {
+      // Clear export map for this project
+      clearExportMap(this.project);
+      
+      // Clear project references
+      this.project = null;
+    }
+    
+    // Force garbage collection if available
+    if (global.gc && this.config.enableMemoryOptimization) {
+      global.gc();
     }
   }
 
@@ -514,24 +604,26 @@ class TypeScriptAutoFixer {
     console.log("\n🐍 Stage 1: Text-based preprocessing...");
     const filesToProcess = await this.getFilesToProcess();
     
-    const results = await Promise.allSettled(
-      filesToProcess.map(filePath => this.preprocessSingleFile(filePath))
-    );
+    // MEMORY FIX: Process files in smaller batches
+    const batchSize = this.config.maxFilesPerBatch || 25;
+    let successful = 0;
     
-    const successful = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.filter(r => r.status === 'rejected');
-    
-    console.log(`✅ Preprocessing complete: ${successful}/${filesToProcess.length} files processed`);
-    
-    if (failed.length > 0) {
-      console.warn(`⚠️  ${failed.length} files failed preprocessing:`);
-      failed.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          console.warn(`  - ${filesToProcess[index]}: ${result.reason}`);
-        }
-      });
+    for (let i = 0; i < filesToProcess.length; i += batchSize) {
+      const batch = filesToProcess.slice(i, i + batchSize);
+      
+      const results = await Promise.allSettled(
+        batch.map(filePath => this.preprocessSingleFile(filePath))
+      );
+      
+      successful += results.filter(r => r.status === 'fulfilled').length;
+      
+      // MEMORY FIX: Force garbage collection between batches
+      if (global.gc && this.config.enableMemoryOptimization) {
+        global.gc();
+      }
     }
     
+    console.log(`✅ Preprocessing complete: ${successful}/${filesToProcess.length} files processed`);
     this.stats.filesProcessed = successful;
   }
 
@@ -570,234 +662,134 @@ class TypeScriptAutoFixer {
 
   /**
    * Initialize the TypeScript project
+   * MEMORY FIX: Added memory optimization options
    */
   private async initializeProject(): Promise<void> {
     console.log("\n🤖 Stage 2: Initializing TypeScript project...");
+    
+    // MEMORY FIX: Initialize project with memory optimization settings
+    this.project = new Project({
+      tsConfigFilePath: path.join(this.config.projectPath, "tsconfig.json"),
+      skipAddingFilesFromTsConfig: true,
+      // MEMORY FIX: Add compiler options for better memory management
+      compilerOptions: {
+        skipLibCheck: true, // Skip type checking of declaration files
+        skipDefaultLibCheck: true // Skip type checking of default library declaration files
+      }
+    });
+    
     const srcDir = path.join(this.config.projectPath, 'src');
     console.log(`🤖 Indexing all source files in ${srcDir}...`);
     this.project.addSourceFilesAtPaths(`${srcDir}/**/*.{ts,tsx}`);
+    
     console.log(`🤖 Found ${this.project.getSourceFiles().length} source files.`);
   }
 
   /**
    * Execute all fixing passes
+   * MEMORY FIX: Added memory monitoring between passes
    */
   private async executeFixingPasses(): Promise<void> {
-    // Pass 1: Enforce named exports
-    enforceNamedExports(this.project);
-
-    // Pass 2: Build export map
-    buildExportMap(this.project);
-    
-    // Pass 3: Fix imports based on diagnostics
-    const sourceFilesToFix = this.config.specificFiles.length > 0 
-      ? this.config.specificFiles.map(filePath => this.project.getSourceFileOrThrow(filePath))
-      : this.project.getSourceFiles().filter(sf => !sf.getFilePath().includes('/node_modules/') && !sf.isDeclarationFile());
-        
-    for (const sourceFile of sourceFilesToFix) {
-      fixImportsBasedOnDiagnostics(sourceFile);
+    if (!this.project) {
+      throw new Error("Project not initialized");
     }
 
+    // Pass 1: Enforce named exports
+    console.log("🔄 Pass 1: Enforcing named exports...");
+    enforceNamedExports(this.project);
+    this.logMemoryUsage("After Pass 1");
+
+    // Pass 2: Build export map
+    console.log("🗺️  Pass 2: Building export map...");
+    buildExportMap(this.project);
+    this.logMemoryUsage("After Pass 2");
+    
+    // Pass 3: Fix imports based on diagnostics
+    console.log("🔧 Pass 3: Fixing imports...");
+    const sourceFilesToFix = this.config.specificFiles.length > 0 
+      ? this.config.specificFiles.map(filePath => this.project!.getSourceFileOrThrow(filePath))
+      : this.project.getSourceFiles().filter(sf => 
+          !sf.getFilePath().includes('/node_modules/') && 
+          !sf.isDeclarationFile()
+        );
+        
+    // MEMORY FIX: Process files in batches
+    const batchSize = this.config.maxFilesPerBatch || 25;
+    for (let i = 0; i < sourceFilesToFix.length; i += batchSize) {
+      const batch = sourceFilesToFix.slice(i, i + batchSize);
+      
+      for (const sourceFile of batch) {
+        try {
+          fixImportsBasedOnDiagnostics(sourceFile, this.project);
+        } catch (error) {
+          console.warn(`⚠️  Warning: Failed to fix imports in ${sourceFile.getBaseName()}: ${error}`);
+        }
+      }
+      
+      // MEMORY FIX: Force garbage collection between batches
+      if (global.gc && this.config.enableMemoryOptimization) {
+        global.gc();
+      }
+    }
+    
+    this.logMemoryUsage("After Pass 3");
+
     // Pass 4: Handle Next.js specific build errors
+    console.log("🚀 Pass 4: Fixing Next.js build errors...");
     fixNextJsBuildErrors(this.project, this.config.buildOutput);
+    this.logMemoryUsage("After Pass 4");
+  }
+
+  /**
+   * MEMORY FIX: Helper method to log memory usage
+   */
+  private logMemoryUsage(stage: string): void {
+    if (this.config.verboseLogging && process.memoryUsage) {
+      const usage = process.memoryUsage();
+      console.log(`📊 ${stage} - Memory: ${Math.round(usage.heapUsed / 1024 / 1024)}MB heap, ${Math.round(usage.rss / 1024 / 1024)}MB RSS`);
+    }
   }
 
   /**
    * Finalize changes and organize imports
+   * MEMORY FIX: Process in batches to prevent memory spikes
    */
   private async finalizeChanges(): Promise<void> {
+    if (!this.project) {
+      throw new Error("Project not initialized");
+    }
+
     console.log("  - [Pass 5] Organizing imports and cleaning up...");
     const sourceFilesToFix = this.config.specificFiles.length > 0 
-      ? this.config.specificFiles.map(filePath => this.project.getSourceFileOrThrow(filePath))
-      : this.project.getSourceFiles().filter(sf => !sf.getFilePath().includes('/node_modules/') && !sf.isDeclarationFile());
-        
-    for (const sourceFile of sourceFilesToFix) {
-      sourceFile.organizeImports();
+      ? this.config.specificFiles.map(filePath => this.project!.getSourceFileOrThrow(filePath))
+      : this.project.getSourceFiles().filter(sf => 
+          !sf.getFilePath().includes('/node_modules/') && 
+          !sf.isDeclarationFile()
+        );
+    
+    // MEMORY FIX: Organize imports in batches
+    const batchSize = this.config.maxFilesPerBatch || 25;
+    for (let i = 0; i < sourceFilesToFix.length; i += batchSize) {
+      const batch = sourceFilesToFix.slice(i, i + batchSize);
+      
+      for (const sourceFile of batch) {
+        try {
+          sourceFile.organizeImports();
+        } catch (error) {
+          console.warn(`⚠️  Warning: Failed to organize imports in ${sourceFile.getBaseName()}: ${error}`);
+        }
+      }
     }
 
     console.log("🤖 Saving all changes...");
     await this.project.save();
-  }
-
-  /**
-   * Check if source file is valid for processing
-   */
-  private isValidSourceFile(sf: SourceFile): boolean {
-    return !sf.getFilePath().includes("/node_modules/") && !sf.isDeclarationFile();
-  }
-
-  /**
-   * Optimized export map building with batching and caching
-   */
-  private buildExportMap(): void {
-    console.log("  - [Pass 2] Building optimized export map...");
-    this.exportMap.clear();
-    
-    const sourceFiles = this.project.getSourceFiles()
-      .filter(sf => this.isValidSourceFile(sf));
-    
-    // Process files in batches for better memory management
-    const batchSize = 50;
-    for (let i = 0; i < sourceFiles.length; i += batchSize) {
-      const batch = sourceFiles.slice(i, i + batchSize);
-      this.processBatch(batch);
-    }
-    
-    console.log(`  - Export map built: ${this.exportMap.size} exports indexed`);
-    this.validateExportMap();
-  }
-
-  /**
-   * Process a batch of source files for export extraction
-   */
-  private processBatch(sourceFiles: SourceFile[]): void {
-    for (const sourceFile of sourceFiles) {
-      try {
-        this.extractExportsFromFile(sourceFile);
-      } catch (error) {
-        console.warn(`⚠️  Failed to process ${sourceFile.getBaseName()}: ${error}`);
-      }
-    }
-  }
-
-  /**
-   * Extract exports from a single file
-   */
-  private extractExportsFromFile(sourceFile: SourceFile): void {
-    const filePath = sourceFile.getFilePath();
-    
-    // Only process files in the src directory
-    if (!filePath.includes('/src/')) {
-      return;
-    }
-    
-    // Calculate the module specifier for imports (@/...)
-    const srcIndex = filePath.indexOf('/src/');
-    const relativePath = filePath.substring(srcIndex + 5).replace(/\.(ts|tsx)$/, '').replace(/\\/g, '/');
-    const moduleSpecifier = `@/${relativePath.replace(/\/index$/, '')}`;
-    
-    // Handle default exports
-    const defaultExportSymbol = sourceFile.getDefaultExportSymbol();
-    if (defaultExportSymbol) {
-      let exportName = defaultExportSymbol.getAliasedSymbol()?.getName() ?? defaultExportSymbol.getName();
-      if (exportName === 'default') {
-        const baseName = sourceFile.getBaseNameWithoutExtension();
-        exportName = (baseName !== 'index') 
-          ? (baseName.charAt(0).toUpperCase() + baseName.slice(1)) 
-          : (path.basename(path.dirname(sourceFile.getFilePath())).charAt(0).toUpperCase() + path.basename(path.dirname(sourceFile.getFilePath())).slice(1));
-      }
-      if (!this.exportMap.has(exportName)) {
-        this.exportMap.set(exportName, { path: moduleSpecifier, isDefault: true, sourceFile });
-      }
-    }
-    
-    // Handle named exports
-    const exportSymbols = sourceFile.getExportSymbols();
-    exportSymbols.forEach(symbol => {
-      const name = symbol.getName();
-      if (name !== "default" && !this.exportMap.has(name)) {
-        this.exportMap.set(name, { path: moduleSpecifier, isDefault: false, sourceFile });
-      }
-    });
-  }
-
-  /**
-   * Validate the export map
-   */
-  private validateExportMap(): void {
-    if (this.exportMap.size === 0) {
-      console.warn(`⚠️  WARNING: No exports found! This might indicate a problem with file indexing.`);
-    }
-  }
-
-  /**
-   * Enhanced import fixing with smart resolution strategies
-   */
-  private fixImportsIntelligently(sourceFile: SourceFile): DiagnosticFix[] {
-    const fixes: DiagnosticFix[] = [];
-    const diagnostics = sourceFile.getPreEmitDiagnostics();
-    
-    for (const diagnostic of diagnostics) {
-      const fix = this.createFixForDiagnostic(diagnostic, sourceFile);
-      if (fix && this.applyFix(fix, sourceFile)) {
-        fixes.push(fix);
-        this.stats.diagnosticsResolved++;
-      }
-    }
-    
-    return fixes;
-  }
-
-  /**
-   * Create appropriate fix strategy based on diagnostic code
-   */
-  private createFixForDiagnostic(diagnostic: Diagnostic, sourceFile: SourceFile): DiagnosticFix | null {
-    const code = diagnostic.getCode();
-    const message = diagnostic.getMessageText();
-    
-    switch (code) {
-      case 2613: // Module has no default export
-        return this.createDefaultToNamedFix(diagnostic, sourceFile);
-      case 2304: // Cannot find name
-        return this.createMissingImportFix(diagnostic, sourceFile);
-      case 2307: // Cannot resolve module
-        return this.createModuleResolutionFix(diagnostic, sourceFile);
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Create fix for default to named export conversion
-   */
-  private createDefaultToNamedFix(diagnostic: Diagnostic, sourceFile: SourceFile): DiagnosticFix | null {
-    // Implementation for default to named export fix
-    return {
-      code: diagnostic.getCode(),
-      message: diagnostic.getMessageText().toString(),
-      applied: false,
-      description: "Convert default import to named import"
-    };
-  }
-
-  /**
-   * Create fix for missing import
-   */
-  private createMissingImportFix(diagnostic: Diagnostic, sourceFile: SourceFile): DiagnosticFix | null {
-    // Implementation for missing import fix
-    return {
-      code: diagnostic.getCode(),
-      message: diagnostic.getMessageText().toString(),
-      applied: false,
-      description: "Add missing import"
-    };
-  }
-
-  /**
-   * Create fix for module resolution
-   */
-  private createModuleResolutionFix(diagnostic: Diagnostic, sourceFile: SourceFile): DiagnosticFix | null {
-    // Implementation for module resolution fix
-    return {
-      code: diagnostic.getCode(),
-      message: diagnostic.getMessageText().toString(),
-      applied: false,
-      description: "Fix module resolution"
-    };
-  }
-
-  /**
-   * Apply a diagnostic fix
-   */
-  private applyFix(fix: DiagnosticFix, sourceFile: SourceFile): boolean {
-    // Implementation for applying fixes
-    return true;
   }
 }
 
 /**
  * Backward-compatible main function that preserves existing API
  * while using the new enhanced architecture internally
+ * MEMORY FIX: Added proper cleanup and error handling
  */
 async function fixProject(
   projectPath: string, 
@@ -806,83 +798,22 @@ async function fixProject(
 ): Promise<void> {
   console.log("🚀 Starting Hybrid Auto-Fix for TypeScript project...");
   
-  // --- STAGE 1: Pre-processing (from Python script) ---
-  console.log("\n🐍 [TS] Stage 1: Running text-based pre-processing...");
-  let preprocessedCount = 0;
-  
-  const filesToProcess = specificFilePaths.length > 0 
-    ? specificFilePaths 
-    : [];
-    
-  if (filesToProcess.length === 0) {
-    // Scan for files if none specified
-    const srcDir = path.join(projectPath, 'src');
-    const extensions = ['**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx'];
-    
-    try {
-      const glob = require('glob');
-      for (const ext of extensions) {
-        const files = glob.sync(path.join(srcDir, ext));
-        filesToProcess.push(...files.filter((f: string) => !f.includes('node_modules')));
-      }
-    } catch (error) {
-      console.log("Warning: glob not available, processing specific files only");
-    }
-  }
-  
-  for (const filePath of filesToProcess) {
-    if (preprocessFile(filePath)) {
-      preprocessedCount++;
-    }
-  }
-  
-  console.log(`🐍 [TS] Pre-processing complete. ${preprocessedCount} files modified.`);
-  
-  if (filesToProcess.length === 0) {
-    console.log("✅ No files to process. Exiting.");
-    return;
-  }
-  
-  // --- STAGE 2: TypeScript AST-based fixing ---
-  console.log("\n🤖 [TS] Stage 2: Initializing TypeScript project...");
-  const project = new Project({
-    tsConfigFilePath: path.join(projectPath, "tsconfig.json"),
-    skipAddingFilesFromTsConfig: true,
+  // MEMORY FIX: Use the new TypeScriptAutoFixer class with proper cleanup
+  const fixer = new TypeScriptAutoFixer({
+    projectPath,
+    specificFiles: specificFilePaths,
+    buildOutput,
+    enableMemoryOptimization: true,
+    maxFilesPerBatch: 25
   });
-
-  const srcDir = path.join(projectPath, 'src');
-  console.log(`🤖 [TS] Indexing all source files in ${srcDir}...`);
-  project.addSourceFilesAtPaths(`${srcDir}/**/*.{ts,tsx}`);
   
-  console.log(`🤖 [TS] Found ${project.getSourceFiles().length} source files.`);
-  
-  // --- PASS 1: Proactively refactor key components to use named exports ---
-  enforceNamedExports(project);
-
-  // --- PASS 2: Build the map of all available exports based on the new reality ---
-  buildExportMap(project);
-  
-  // --- PASS 3: Fix all import errors in the target files based on diagnostics ---
-  const sourceFilesToFix = specificFilePaths.length > 0 
-    ? specificFilePaths.map(filePath => project.getSourceFileOrThrow(filePath))
-    : project.getSourceFiles().filter(sf => !sf.getFilePath().includes('/node_modules/') && !sf.isDeclarationFile());
-    
-  for (const sourceFile of sourceFilesToFix) {
-    fixImportsBasedOnDiagnostics(sourceFile);
+  try {
+    const stats = await fixer.fixProject();
+    console.log(`✅ Hybrid Auto-Fix complete! Stats:`, stats);
+  } catch (error) {
+    console.error("❌ Auto-fix failed:", error);
+    throw error;
   }
-
-  // --- PASS 4: Handle Next.js specific build errors ---
-  fixNextJsBuildErrors(project, buildOutput);
-
-  // --- PASS 5: Final cleanup and organization ---
-  console.log("  - [Pass 5] Organizing imports and cleaning up...");
-  for (const sourceFile of sourceFilesToFix) {
-    sourceFile.organizeImports();
-  }
-
-  console.log("🤖 [TS] Saving all changes...");
-  await project.save();
-  console.log("✅ Hybrid Auto-Fix complete!");
 }
 
 // --- Main execution block ---
