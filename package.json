@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "fix": "ts-node ts-morph-fixer.ts",
+    "fix": "node ts-morph-fixer.ts src/",
     "install-deps": "pnpm install --strict-peer-dependencies=false",
     "lint": "pnpm exec eslint . --fix",
     "format": "pnpm exec prettier --write . --ignore-unknown",
