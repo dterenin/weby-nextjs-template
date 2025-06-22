@@ -2,6 +2,7 @@
 import { Project, SourceFile, Node, ImportDeclaration, SyntaxKind, ts, Identifier, Diagnostic } from "ts-morph";
 import path from "node:path";
 import fs from "node:fs";
+import { glob } from "glob";
 
 // Enhanced type definitions for better type safety
 interface ExportInfo {
@@ -549,9 +550,8 @@ class TypeScriptAutoFixer {
     const filesToProcess: string[] = [];
     
     try {
-      const glob = require('glob');
       for (const ext of extensions) {
-        const files = glob.sync(path.join(srcDir, ext));
+        const files = await glob(path.join(srcDir, ext));
         filesToProcess.push(...files.filter((f: string) => !f.includes('node_modules')));
       }
     } catch (error) {
@@ -820,9 +820,8 @@ async function fixProject(
     const extensions = ['**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx'];
     
     try {
-      const glob = require('glob');
       for (const ext of extensions) {
-        const files = glob.sync(path.join(srcDir, ext));
+        const files = await glob(path.join(srcDir, ext));
         filesToProcess.push(...files.filter((f: string) => !f.includes('node_modules')));
       }
     } catch (error) {

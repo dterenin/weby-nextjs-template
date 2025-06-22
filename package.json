@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "fix": "node ts-morph-fixer.ts src/",
+    "fix": "node ts-morph-fixer.ts .",
     "install-deps": "pnpm install --strict-peer-dependencies=false",
     "lint": "pnpm exec eslint . --fix",
     "format": "pnpm exec prettier --write . --ignore-unknown",
     "build": "next build",
-    "dev": "pnpm dev",
+    "dev": "next dev",
     "setup": "pnpm run install-deps && pnpm run lint && pnpm run format",
     "fix-and-build": "pnpm run fix && pnpm run setup && pnpm run build",
     "process-site": "pnpm run fix && pnpm run install-deps && pnpm run lint && pnpm run format && pnpm run build"
