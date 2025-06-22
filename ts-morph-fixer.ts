@@ -591,7 +591,21 @@ class TypeScriptAutoFixer {
     
     // Pass 3: Fix imports based on diagnostics
     const sourceFilesToFix = this.config.specificFiles.length > 0 
-      ? this.config.specificFiles.map(filePath => this.project.getSourceFileOrThrow(filePath))
+      ? this.config.specificFiles.map(filePath => {
+          let sourceFile = this.project.getSourceFile(filePath);
+          if (!sourceFile) {
+            // Try with extensions
+            for (const ext of ['.ts', '.tsx', '.js', '.jsx']) {
+              sourceFile = this.project.getSourceFile(filePath + ext);
+              if (sourceFile) break;
+            }
+          }
+          if (!sourceFile) {
+            console.log(`⚠️  Could not find source file: ${filePath}`);
+            return null;
+          }
+          return sourceFile;
+        }).filter(sf => sf !== null) as SourceFile[]
       : this.project.getSourceFiles().filter(sf => !sf.getFilePath().includes('/node_modules/') && !sf.isDeclarationFile());
         
     for (const sourceFile of sourceFilesToFix) {
@@ -608,7 +622,21 @@ class TypeScriptAutoFixer {
   private async finalizeChanges(): Promise<void> {
     console.log("  - [Pass 5] Organizing imports and cleaning up...");
     const sourceFilesToFix = this.config.specificFiles.length > 0 
-      ? this.config.specificFiles.map(filePath => this.project.getSourceFileOrThrow(filePath))
+      ? this.config.specificFiles.map(filePath => {
+          let sourceFile = this.project.getSourceFile(filePath);
+          if (!sourceFile) {
+            // Try with extensions
+            for (const ext of ['.ts', '.tsx', '.js', '.jsx']) {
+              sourceFile = this.project.getSourceFile(filePath + ext);
+              if (sourceFile) break;
+            }
+          }
+          if (!sourceFile) {
+            console.log(`⚠️  Could not find source file: ${filePath}`);
+            return null;
+          }
+          return sourceFile;
+        }).filter(sf => sf !== null) as SourceFile[]
       : this.project.getSourceFiles().filter(sf => !sf.getFilePath().includes('/node_modules/') && !sf.isDeclarationFile());
         
     for (const sourceFile of sourceFilesToFix) {
@@ -863,7 +891,21 @@ async function fixProject(
   
   // --- PASS 3: Fix all import errors in the target files based on diagnostics ---
   const sourceFilesToFix = specificFilePaths.length > 0 
-    ? specificFilePaths.map(filePath => project.getSourceFileOrThrow(filePath))
+    ? specificFilePaths.map(filePath => {
+        let sourceFile = project.getSourceFile(filePath);
+        if (!sourceFile) {
+          // Try with extensions
+          for (const ext of ['.ts', '.tsx', '.js', '.jsx']) {
+            sourceFile = project.getSourceFile(filePath + ext);
+            if (sourceFile) break;
+          }
+        }
+        if (!sourceFile) {
+          console.log(`⚠️  Could not find source file: ${filePath}`);
+          return null;
+        }
+        return sourceFile;
+      }).filter(sf => sf !== null) as SourceFile[]
     : project.getSourceFiles().filter(sf => !sf.getFilePath().includes('/node_modules/') && !sf.isDeclarationFile());
     
   for (const sourceFile of sourceFilesToFix) {
