@@ -552,7 +552,10 @@ class TypeScriptAutoFixer {
     try {
       for (const ext of extensions) {
         const files = await glob(path.join(srcDir, ext));
-        filesToProcess.push(...files.filter((f: string) => !f.includes('node_modules')));
+        filesToProcess.push(...files.filter((f: string) => 
+          !f.includes('node_modules') && 
+          !f.includes('/src/components/ui/') // Skip boilerplate UI components
+        ));
       }
     } catch (error) {
       console.log("Warning: glob not available, processing specific files only");
@@ -850,7 +853,10 @@ async function fixProject(
     try {
       for (const ext of extensions) {
         const files = await glob(path.join(srcDir, ext));
-        filesToProcess.push(...files.filter((f: string) => !f.includes('node_modules')));
+        filesToProcess.push(...files.filter((f: string) => 
+          !f.includes('node_modules') && 
+          !f.includes('/src/components/ui/') // Skip boilerplate UI components
+        ));
       }
     } catch (error) {
       console.log("Warning: glob not available, processing specific files only");

@@ -1,0 +1,51 @@
+# Exclude boilerplate UI components from formatting
+src/components/ui/
+
+# Node modules
+node_modules/
+
+# Build output
+.next/
+out/
+dist/
+build/
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Dependencies
+node_modules
+
+# IDE files
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment files
+.env*
+!.env.example
+
+# Coverage reports
+coverage/
+
+# Generated files
+*.min.js
+*.min.css
+
+# Public assets that shouldn't be formatted
+public/
+static/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Markdown files that might contain code blocks
+CHANGELOG.md
