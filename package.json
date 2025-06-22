@@ -8,7 +8,7 @@
     "install-deps": "pnpm install --strict-peer-dependencies=false",
     "lint": "pnpm exec eslint . --fix",
     "format": "pnpm exec prettier --write . --ignore-unknown",
-    "build": "pnpm run build",
+    "build": "next build",
     "dev": "pnpm dev",
     "setup": "pnpm run install-deps && pnpm run lint && pnpm run format",
     "fix-and-build": "pnpm run fix && pnpm run setup && pnpm run build",
