@@ -1,0 +1,13 @@
+manager:
+  commands:
+    start: [sh, ./scripts/start.sh]
+    healthcheck:
+      command: [sh, ./scripts/healthcheck.sh]
+      interval: 2s
+      max_retries: 30
+      timeout: 4s
+  git:
+    repo_dir: /app/repo
+    dev_branch: dev
+log:
+  level: debug
