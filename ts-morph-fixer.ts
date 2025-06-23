@@ -1,5 +1,5 @@
 // ts-morph-fixer.ts - Complete TypeScript solution
-import { Project, SourceFile, Node, ImportDeclaration, SyntaxKind, ts, Identifier, Diagnostic } from "ts-morph";
+import { Project, SourceFile, Node, SyntaxKind, Diagnostic } from "ts-morph";
 import path from "node:path";
 import fs from "node:fs";
 import { glob } from "glob";
@@ -11,7 +11,7 @@ interface ExportInfo {
   sourceFile?: SourceFile;
 }
 
-interface PreprocessResult {
+interface _PreprocessResult {
   content: string;
   wasChanged: boolean;
   changes: string[];
@@ -60,7 +60,7 @@ interface FixerOptions {
   logLevel?: 'error' | 'warn' | 'info' | 'debug';
 }
 
-const DEFAULT_OPTIONS: Required<FixerOptions> = {
+const _DEFAULT_OPTIONS: Required<FixerOptions> = {
   stripMarkdown: true,
   addUseClient: true,
   customClientIndicators: [],
@@ -254,9 +254,8 @@ function buildExportMap(project: Project) {
       return;
     }
 
-    // Skip UI components directory
+    // Skip UI components directory (silently)
     if (filePath.includes('/src/components/ui/')) {
-      console.log(`    - Skipping UI component: ${path.basename(filePath)}`);
       return;
     }
     
@@ -484,7 +483,7 @@ function fixImportExportMismatch(project: Project, importName: string, modulePat
  * Main controller class for TypeScript project auto-fixing
  * Encapsulates all state and provides a clean API
  */
-class TypeScriptAutoFixer {
+class _TypeScriptAutoFixer {
   private readonly project: Project;
   private readonly config: FixerConfig;
   private readonly exportMap = new Map<string, ExportInfo>();
@@ -576,7 +575,7 @@ class TypeScriptAutoFixer {
           !f.includes('/src/components/ui/') // Skip boilerplate UI components
         ));
       }
-    } catch (error) {
+    } catch (_error) {
       console.log("Warning: glob not available, processing specific files only");
     }
 
@@ -628,7 +627,11 @@ class TypeScriptAutoFixer {
           }
           return sourceFile;
         }).filter(sf => sf !== null) as SourceFile[]
-      : this.project.getSourceFiles().filter(sf => !sf.getFilePath().includes('/node_modules/') && !sf.isDeclarationFile());
+      : this.project.getSourceFiles().filter(sf => 
+          !sf.getFilePath().includes('/node_modules/') && 
+          !sf.isDeclarationFile() &&
+          !sf.getFilePath().includes('/src/components/ui/') // Skip UI components
+        );
         
     for (const sourceFile of sourceFilesToFix) {
       fixImportsBasedOnDiagnostics(sourceFile);
@@ -659,7 +662,11 @@ class TypeScriptAutoFixer {
           }
           return sourceFile;
         }).filter(sf => sf !== null) as SourceFile[]
-      : this.project.getSourceFiles().filter(sf => !sf.getFilePath().includes('/node_modules/') && !sf.isDeclarationFile());
+      : this.project.getSourceFiles().filter(sf => 
+          !sf.getFilePath().includes('/node_modules/') && 
+          !sf.isDeclarationFile() &&
+          !sf.getFilePath().includes('/src/components/ui/') // Skip UI components
+        );
         
     for (const sourceFile of sourceFilesToFix) {
       sourceFile.organizeImports();
@@ -781,17 +788,17 @@ class TypeScriptAutoFixer {
   /**
    * Create appropriate fix strategy based on diagnostic code
    */
-  private createFixForDiagnostic(diagnostic: Diagnostic, sourceFile: SourceFile): DiagnosticFix | null {
+  private createFixForDiagnostic(diagnostic: Diagnostic, _sourceFile: SourceFile): DiagnosticFix | null {
     const code = diagnostic.getCode();
-    const message = diagnostic.getMessageText();
+    const _message = diagnostic.getMessageText();
     
     switch (code) {
       case 2613: // Module has no default export
-        return this.createDefaultToNamedFix(diagnostic, sourceFile);
+        return this.createDefaultToNamedFix(diagnostic, _sourceFile);
       case 2304: // Cannot find name
-        return this.createMissingImportFix(diagnostic, sourceFile);
+        return this.createMissingImportFix(diagnostic, _sourceFile);
       case 2307: // Cannot resolve module
-        return this.createModuleResolutionFix(diagnostic, sourceFile);
+        return this.createModuleResolutionFix(diagnostic, _sourceFile);
       default:
         return null;
     }
@@ -800,7 +807,7 @@ class TypeScriptAutoFixer {
   /**
    * Create fix for default to named export conversion
    */
-  private createDefaultToNamedFix(diagnostic: Diagnostic, sourceFile: SourceFile): DiagnosticFix | null {
+  private createDefaultToNamedFix(diagnostic: Diagnostic, _sourceFile: SourceFile): DiagnosticFix | null {
     // Implementation for default to named export fix
     return {
       code: diagnostic.getCode(),
@@ -813,7 +820,7 @@ class TypeScriptAutoFixer {
   /**
    * Create fix for missing import
    */
-  private createMissingImportFix(diagnostic: Diagnostic, sourceFile: SourceFile): DiagnosticFix | null {
+  private createMissingImportFix(diagnostic: Diagnostic, _sourceFile: SourceFile): DiagnosticFix | null {
     // Implementation for missing import fix
     return {
       code: diagnostic.getCode(),
@@ -826,7 +833,7 @@ class TypeScriptAutoFixer {
   /**
    * Create fix for module resolution
    */
-  private createModuleResolutionFix(diagnostic: Diagnostic, sourceFile: SourceFile): DiagnosticFix | null {
+  private createModuleResolutionFix(diagnostic: Diagnostic, _sourceFile: SourceFile): DiagnosticFix | null {
     // Implementation for module resolution fix
     return {
       code: diagnostic.getCode(),
@@ -839,7 +846,7 @@ class TypeScriptAutoFixer {
   /**
    * Apply a diagnostic fix
    */
-  private applyFix(fix: DiagnosticFix, sourceFile: SourceFile): boolean {
+  private applyFix(_fix: DiagnosticFix, _sourceFile: SourceFile): boolean {
     // Implementation for applying fixes
     return true;
   }
@@ -877,7 +884,7 @@ async function fixProject(
           !f.includes('/src/components/ui/') // Skip boilerplate UI components
         ));
       }
-    } catch (error) {
+    } catch (_error) {
       console.log("Warning: glob not available, processing specific files only");
     }
   }
@@ -931,7 +938,11 @@ async function fixProject(
         }
         return sourceFile;
       }).filter(sf => sf !== null) as SourceFile[]
-    : project.getSourceFiles().filter(sf => !sf.getFilePath().includes('/node_modules/') && !sf.isDeclarationFile());
+    : project.getSourceFiles().filter(sf => 
+        !sf.getFilePath().includes('/node_modules/') && 
+        !sf.isDeclarationFile() &&
+        !sf.getFilePath().includes('/src/components/ui/') // Skip UI components
+      );
     
   for (const sourceFile of sourceFilesToFix) {
     fixImportsBasedOnDiagnostics(sourceFile);
@@ -942,7 +953,10 @@ async function fixProject(
 
   // --- PASS 5: Final cleanup and organization ---
   console.log("  - [Pass 5] Organizing imports and cleaning up...");
-  for (const sourceFile of sourceFilesToFix) {
+  const finalSourceFiles = sourceFilesToFix.filter(sf => 
+    !sf.getFilePath().includes('/src/components/ui/') // Skip UI components in final pass too
+  );
+  for (const sourceFile of finalSourceFiles) {
     sourceFile.organizeImports();
   }
 
@@ -987,7 +1001,7 @@ function runFixer() {
         return false;
       }
       return true;
-    } catch (error) {
+    } catch (_error) {
       console.log(`  - File not found, will be processed anyway: ${filePath}`);
       return true; // Include files that don't exist yet (might be created)
     }

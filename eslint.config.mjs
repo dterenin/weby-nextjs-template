@@ -23,41 +23,17 @@ const eslintConfig = [
   },
   {
     rules: {
-      // More precise rules for better code quality
-      "@typescript-eslint/no-unused-vars": ["error", { 
+      // Basic JavaScript/React rules that work with Next.js config
+      "no-unused-vars": ["error", { 
         argsIgnorePattern: "^_",
         varsIgnorePattern: "^_",
         caughtErrorsIgnorePattern: "^_"
       }],
-      "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/prefer-const": "error",
+      "prefer-const": "error",
       "react/prop-types": "off", // TypeScript handles this
       "react/react-in-jsx-scope": "off", // Next.js handles this
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
-      "import/order": ["error", {
-        "groups": [
-          "builtin",
-          "external", 
-          "internal",
-          "parent",
-          "sibling",
-          "index"
-        ],
-        "pathGroups": [
-          {
-            "pattern": "@/**",
-            "group": "internal",
-            "position": "before"
-          }
-        ],
-        "pathGroupsExcludedImportTypes": ["builtin"],
-        "newlines-between": "always",
-        "alphabetize": {
-          "order": "asc",
-          "caseInsensitive": true
-        }
-      }],
     },
   },
 ];

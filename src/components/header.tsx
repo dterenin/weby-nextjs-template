@@ -1,4 +1,3 @@
-import React from 'react';
 
 //`export const Header = () => { ... };` to `export default function Header() { ... }`
 export function Header() {
