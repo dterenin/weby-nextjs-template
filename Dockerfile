@@ -5,7 +5,7 @@ WORKDIR /src
 # Install git to clone the repo
 RUN apk add --no-cache git \
     && git clone https://gitverse.ru/tvfn/studio-hypervisor.git . \
-    && git checkout 0.1.0
+    && git checkout 0.1.1
 
 # Build the server binary
 WORKDIR /src/cmd/server
