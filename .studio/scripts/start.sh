@@ -1,8 +1,13 @@
 #!/bin/bash
 set -e
 
-[ -d "./node_modules" ] || ln -s ../node_modules ./node_modules
-[ -d "./.next" ] || ln -s ../.next ./.next
+if [ ! -d "./node_modules" ]; then
+    ln -s ../node_modules ./node_modules
+fi
+
+if [ ! -d "./.next" ]; then
+    ln -s ../.next ./.next
+fi
 
 START=$(date +%s);
 echo "Starting fix"
