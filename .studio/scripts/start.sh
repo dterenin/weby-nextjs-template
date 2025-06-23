@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-if [ ! -d "./node_modules" ]; then
+if [ ! -e "node_modules" ]; then
     ln -s ../node_modules ./node_modules
 fi
 
-if [ ! -d "./.next" ]; then
+if [ ! -e ".next" ]; then
     ln -s ../.next ./.next
 fi
 
