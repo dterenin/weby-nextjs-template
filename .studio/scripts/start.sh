@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+ls -al .
+
 if [ ! -e "node_modules" ]; then
     ln -s ../node_modules ./node_modules
 fi
