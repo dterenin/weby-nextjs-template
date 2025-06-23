@@ -1,8 +1,8 @@
 manager:
   commands:
-    start: [sh, ./scripts/start.sh]
+    start: [sh, /app/.studio/scripts/start.sh]
     healthcheck:
-      command: [sh, ./scripts/healthcheck.sh]
+      command: [sh, /app/.studio/scripts/healthcheck.sh]
       interval: 2s
       max_retries: 30
       timeout: 4s
