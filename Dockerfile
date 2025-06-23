@@ -15,7 +15,6 @@ RUN go build -o hypervisor
 FROM node:23-alpine AS deps
 
 WORKDIR /app
-ENV STUDIO_HV_CONFIG_FILE=/app/repo/.studio/hv.yaml
 
 RUN apk add --no-cache curl
 
@@ -26,6 +25,10 @@ RUN chmod +x /app/bin/hypervisor
 # Install Node dependencies
 COPY package.json package-lock.json* ./
 RUN npm run install-deps
+
+# Copy template studio configurations
+ENV STUDIO_HV_CONFIG_FILE=/app/.studio/hv.yaml
+COPY .studio /app/.studio
 
 # Expose ports and set entrypoint
 EXPOSE 3000
