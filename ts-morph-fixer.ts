@@ -133,6 +133,19 @@ function addUseClient(content: string): string {
 
 function preprocessFile(filePath: string): boolean {
   try {
+    // Check if path is a directory and skip it
+    const stats = fs.statSync(filePath);
+    if (stats.isDirectory()) {
+      console.log(`  - Skipping directory: ${path.basename(filePath)}`);
+      return false;
+    }
+
+    // Skip UI components directory
+    if (filePath.includes('/src/components/ui/')) {
+      console.log(`  - Skipping UI component: ${path.basename(filePath)}`);
+      return false;
+    }
+
     const originalContent = fs.readFileSync(filePath, 'utf-8');
     let content = originalContent;
     let wasChanged = false;
@@ -238,6 +251,12 @@ function buildExportMap(project: Project) {
     // Only process files in the src directory
     if (!filePath.includes('/src/')) {
       console.log(`    - Skipping file outside src: ${filePath}`);
+      return;
+    }
+
+    // Skip UI components directory
+    if (filePath.includes('/src/components/ui/')) {
+      console.log(`    - Skipping UI component: ${path.basename(filePath)}`);
       return;
     }
     
@@ -958,7 +977,23 @@ function runFixer() {
     process.exit(1);
   }
 
-  fixProject(path.resolve(projectDirectory), specificFiles, buildOutput).catch((err) => {
+  // Filter out directories from specificFiles and validate file paths
+  const validFiles = specificFiles.filter(filePath => {
+    try {
+      const resolvedPath = path.resolve(projectDirectory, filePath);
+      const stats = fs.statSync(resolvedPath);
+      if (stats.isDirectory()) {
+        console.log(`  - Skipping directory: ${filePath}`);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.log(`  - File not found, will be processed anyway: ${filePath}`);
+      return true; // Include files that don't exist yet (might be created)
+    }
+  });
+
+  fixProject(path.resolve(projectDirectory), validFiles, buildOutput).catch((err) => {
     console.error("❌ [TS] An unexpected error occurred:", err);
     process.exit(1);
   });
