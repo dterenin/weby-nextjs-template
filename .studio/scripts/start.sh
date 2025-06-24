@@ -2,7 +2,6 @@
 set -e
 
 ln -s ../node_modules ./node_modules || true
-ln -s ../.next ./.next || true
 
 START=$(date +%s);
 echo "Starting fix"
