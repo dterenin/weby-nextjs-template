@@ -1,7 +1,7 @@
 ## Stage 1: deps and build hypervisor
 FROM golang:1.24.2-alpine AS builder
 
-ARG HYPERVISOR_VERSION=0.1.3
+ARG HYPERVISOR_VERSION=0.1.4
 
 WORKDIR /src
 # Install git to clone the repo
