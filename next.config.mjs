@@ -22,6 +22,18 @@ const nextConfig = {
     // This allows specifying patterns for subdomains, paths, and protocols.
     // Always prefer to list specific hostnames or use limited wildcards where possible.
     remotePatterns: [
+      // GigaConf domain
+      {
+        protocol: 'https',
+        hostname: 'gigaconf.ru',
+        pathname: '**',
+      },
+      // PDLC domain for logo
+      {
+        protocol: 'https',
+        hostname: 'pdlc-platform.vercel.app',
+        pathname: '**',
+      },
       // Common Placeholder Services
       {
         protocol: 'https',
