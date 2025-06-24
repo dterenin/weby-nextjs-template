@@ -3,8 +3,8 @@ manager:
     start: [sh, /app/.studio/scripts/start.sh]
     healthcheck:
       command: [sh, /app/.studio/scripts/healthcheck.sh]
-      interval: 2s
-      max_retries: 30
+      interval: 4s
+      max_retries: 20
       timeout: 4s
   git:
     repo_dir: /app/repo
