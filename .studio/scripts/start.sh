@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-ln -s ../node_modules ./node_modules || 1
-ln -s ../.next ./.next || 1
+ln -s ../node_modules ./node_modules || true
+ln -s ../.next ./.next || true
 
 START=$(date +%s);
 echo "Starting fix"
