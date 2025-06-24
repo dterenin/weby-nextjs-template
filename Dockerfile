@@ -1,11 +1,13 @@
 ## Stage 1: deps and build hypervisor
 FROM golang:1.24.2-alpine AS builder
 
+ARG HYPERVISOR_VERSION=0.1.2
+
 WORKDIR /src
 # Install git to clone the repo
 RUN apk add --no-cache git \
     && git clone https://gitverse.ru/tvfn/studio-hypervisor.git . \
-    && git checkout 0.1.1
+    && git checkout $HYPERVISOR_VERSION
 
 # Build the server binary
 WORKDIR /src/cmd/server
