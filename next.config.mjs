@@ -1,5 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Performance optimizations
+  env: {
+    NEXT_TELEMETRY_DISABLED: '1',
+    SWC_CACHE: '1',
+    WEBPACK_CACHE: 'memory'
+  },
   typescript: {
     ignoreBuildErrors: true
   },
@@ -9,6 +15,15 @@ const nextConfig = {
   output: 'standalone',
   distDir: '.next',
   trailingSlash: true,
+  // Build optimization
+  experimental: {
+    // Modern experimental features for Next.js 15
+  },
+  // Cache optimization
+  onDemandEntries: {
+    maxInactiveAge: 60 * 1000,
+    pagesBufferLength: 2
+  },
   webpack: (config) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
