@@ -11,3 +11,7 @@ manager:
     dev_branch: dev
 log:
   level: debug
+server:
+  proxy:
+    enabled: true
+    host: http://localhost:8080

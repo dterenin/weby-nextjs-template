@@ -34,7 +34,7 @@ ENV STUDIO_HV_CONFIG_FILE=/app/.studio/hv.yaml
 COPY .studio /app/.studio
 
 # Expose ports and set entrypoint
-EXPOSE 3000
+EXPOSE 8080
 EXPOSE 9090
 ENTRYPOINT ["/app/bin/hypervisor"]
 
