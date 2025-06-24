@@ -9,13 +9,6 @@ END=$(date +%s);
 printf "\nElapsed:\n"
 echo $((END-START)) | awk '{print int($1/60)":"int($1%60)}'
 
-echo "Starting install-deps"
-npm run install-deps
-END=$(date +%s);
-
-printf "\nElapsed:\n"
-echo $((END-START)) | awk '{print int($1/60)":"int($1%60)}'
-
 echo "Starting lint"
 npm run lint
 END=$(date +%s);
