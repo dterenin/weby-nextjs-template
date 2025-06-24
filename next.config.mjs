@@ -12,7 +12,6 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true
   },
-  output: 'standalone',
   distDir: '.next',
   trailingSlash: true,
   // Build optimization
