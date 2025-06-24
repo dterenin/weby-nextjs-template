@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e
 
-ln -s ../node_modules ./node_modules || true
-
 START=$(date +%s);
 echo "Starting fix"
 npm run fix
