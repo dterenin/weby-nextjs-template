@@ -45,7 +45,7 @@ export default function LoadingPage() {
       {/* Header with Logo */}
       <div className="text-center mb-16">
         <div className="flex items-center justify-center gap-4 mb-4">
-          <img
+          <Image
             src="https://pdlc-platform.vercel.app/logo.png"
             alt="Logo"
             width={60}

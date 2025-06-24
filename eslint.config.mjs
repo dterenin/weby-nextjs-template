@@ -19,6 +19,8 @@ const eslintConfig = [
       "out/**/*",
       "dist/**/*",
       "build/**/*",
+      "ts-morph-fixer.ts", // Ignore utility script
+      "tailwind.config.ts", // Allow require() in config files
     ],
   },
   {
