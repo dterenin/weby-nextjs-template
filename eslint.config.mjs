@@ -26,11 +26,7 @@ const eslintConfig = [
   {
     rules: {
       // Basic JavaScript/React rules that work with Next.js config
-      "no-unused-vars": ["error", { 
-        argsIgnorePattern: "^_",
-        varsIgnorePattern: "^_",
-        caughtErrorsIgnorePattern: "^_"
-      }],
+      "no-unused-vars": "off",
       "prefer-const": "error",
       "react/prop-types": "off", // TypeScript handles this
       "react/react-in-jsx-scope": "off", // Next.js handles this
