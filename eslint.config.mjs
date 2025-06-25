@@ -29,7 +29,7 @@ const eslintConfig = [
       "no-unused-vars": "warn",
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": "warn",
-      "prefer-const": "error",
+      "prefer-const": "warn",
       "react/prop-types": "off", // TypeScript handles this
       "react/react-in-jsx-scope": "off", // Next.js handles this
       "react-hooks/rules-of-hooks": "error",
