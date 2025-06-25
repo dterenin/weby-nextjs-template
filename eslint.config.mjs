@@ -26,9 +26,9 @@ const eslintConfig = [
   {
     rules: {
       // Basic JavaScript/React rules that work with Next.js config
-      "no-unused-vars": "warning",
-      "@typescript-eslint/no-explicit-any": "warning",
-      "@typescript-eslint/no-unused-vars": "warning",
+      "no-unused-vars": "warn",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unused-vars": "warn",
       "prefer-const": "error",
       "react/prop-types": "off", // TypeScript handles this
       "react/react-in-jsx-scope": "off", // Next.js handles this
