@@ -6,7 +6,7 @@
   "scripts": {
     "fix": "node ts-morph-fixer.ts .",
     "install-deps": "npm install --strict-peer-dependencies=false --legacy-peer-deps",
-    "lint": "npm exec eslint . --fix",
+    "lint": "npm exec eslint . --fix --cache=false",
     "start": "next start",
     "format": "npm exec prettier --write . --ignore-unknown",
     "build": "next build",
