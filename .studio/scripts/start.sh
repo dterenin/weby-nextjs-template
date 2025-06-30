@@ -23,12 +23,16 @@ END=$(date +%s);
 printf "\nElapsed:\n"
 echo $((END-START)) | awk '{print int($1/60)":"int($1%60)}'
 
-echo "Starting build"
-npm run build
-END=$(date +%s);
+echo "Starting Next.js dev server..."
+npm run dev &
+DEV_PID=$!
 
-printf "\nElapsed:\n"
-echo $((END-START)) | awk '{print int($1/60)":"int($1%60)}'
+echo "Waiting for server to be ready..."
+while ! curl -s http://localhost:8080 > /dev/null 2>&1; do
+    sleep 0.5
+    done
 
-echo "Starting start"
-npm run start
+END=$(date +%s)
+echo "✅ Server ready at http://localhost:8080 in $((END-START))s total"
+
+wait $DEV_PID
