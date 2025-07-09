@@ -18,8 +18,10 @@ const phrases = [
 
 export default function LoadingPage() {
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
+    setIsClient(true);
     const phraseInterval = setInterval(() => {
       setCurrentPhraseIndex((prev) => (prev + 1) % phrases.length);
     }, 3500);
@@ -82,7 +84,7 @@ export default function LoadingPage() {
         <div className="relative w-96 h-64 overflow-hidden p-6 flex items-center justify-center">
           <div className="relative w-full h-full flex items-center justify-center">
             <div className="relative">
-              {getVisiblePhrases().map(({ phrase, offset, key }) => {
+              {isClient && getVisiblePhrases().map(({ phrase, offset, key }) => {
                 const isCenter = offset === 0;
                 const opacity = isCenter ? 1 : Math.abs(offset) === 1 ? 0.5 : 0.2;
                 const scale = isCenter ? 1.1 : 1;
