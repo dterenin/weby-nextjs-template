@@ -13,7 +13,7 @@
     "dev": "next dev",
     "setup": "npm run install-deps && npm run lint && npm run format",
     "fix-and-build": "npm run fix && npm run setup && npm run build",
-    "process-site": "npm run install-deps && npm run fix && npm run lint && npm run format && npm run build"
+    "process-site": "npm run install-deps && npm run fix && npm run lint && npm run format"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
